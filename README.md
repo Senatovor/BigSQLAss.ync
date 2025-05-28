@@ -67,16 +67,12 @@ class SetupModel(Base):
 ```python
 from app.database.model import Base
 from app.database.session import SQL_DATABASE_URL
+from app.models.setup_model import SetupModel      # ДОБАВЛЯЕМ МОДЕЛЬ
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
 config.set_main_option("sqlalchemy.url", SQL_DATABASE_URL)
-
-# Interpret the config file for Python logging.
-# This line sets up loggers basically.
-if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
 ```
 ### 4. Генерация миграций
 ```bash
