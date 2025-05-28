@@ -65,13 +65,18 @@ class SetupModel(Base):
 ```
 А так выглядит добавление в env:
 ```python
-from app.models.setup_model import SetupModel
-from app.database.service import BaseService
+from app.database.model import Base
+from app.database.session import SQL_DATABASE_URL
 
+# this is the Alembic Config object, which provides
+# access to the values within the .ini file in use.
+config = context.config
+config.set_main_option("sqlalchemy.url", SQL_DATABASE_URL)
 
-class SetupService(BaseService[SetupModel]):
-    """Пример одного из ваших сервисов"""
-    model = SetupModel
+# Interpret the config file for Python logging.
+# This line sets up loggers basically.
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
 ```
 ### 4. Генерация миграций
 ```bash
