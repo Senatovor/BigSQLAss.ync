@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     model_config - расположение вашего .env
     """
 
-    PIDO_PORT: str
+    DB_PORT: str
     DB_PORT: str
     DB_NAME: str
     DB_USER: str
