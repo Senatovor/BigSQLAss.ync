@@ -4,11 +4,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     """
-    Класс настроек к вашей базы данных
-
-    model_config - расположение вашего .env
+    Класс настроек к вашей базы данных.
+    Model_config - расположение вашего .env
     """
-
     DB_PORT: str
     DB_PORT: str
     DB_NAME: str
