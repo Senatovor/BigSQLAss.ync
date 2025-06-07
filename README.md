@@ -17,14 +17,14 @@
 ```text
 📦 project-root/
 ├── 📂 app/                  # Основное приложение
-│   ├── 📂 database/         # Основные файлы для работы с бд
+│   ├── 📂 database/         # Основной модуль для работы с БД
 │   │   ├── model.py         # Базовая модель SQLAlchemy
 │   │   ├── service.py       # Базовый сервис с универсальными методами
 │   │   └── session.py       # Управление сессиями
-│   ├── 📂 enums/            # Папка для хранения ваших Enum моделей
-│   ├── 📂 models/           # Папка для хранения ваших SQLAlchemy моделей
-│   ├── 📂 schemes/          # Схемы Pydantic
-│   ├── 📂 services/         # Папка ваших сервисов
+│   ├── enums.py             # Файл для хранения ваших Enum моделей
+│   ├── models.py            # Файл для хранения ваших SQLAlchemy моделей
+│   ├── schemes.py           # Схемы Pydantic
+│   ├── services.py          # Файл ваших сервисов
 │   ├── config.py            # Конфигурация приложения
 │   └── main.py              # Точка входа
 │
@@ -74,6 +74,11 @@ from app.models.setup_model import SetupModel      # ДОБАВЛЯЕМ МОДЕ
 config = context.config
 config.set_main_option("sqlalchemy.url", SQL_DATABASE_URL)
 ```
+Хотя, если вы будете создавать модели в заранее созданном в проекте файле models.py, то лазить в env.py не обязательно, так как там будет прописан:
+```python
+from app.models import *
+```
+
 ### 4. Генерация миграций
 ```bash
 alembic revision --autogenerate -m "init"
@@ -124,6 +129,7 @@ from app.models.setup_model import SetupModel      # ДОБАВЛЯЕМ МОДЕ
 config = context.config
 config.set_main_option("sqlalchemy.url", SQL_DATABASE_URL)
 ```
+P.S. Но если делаете модели в modfels.py, то добавлять модели в env.py не обязательно
 ### 3. Заготавливаем модель Pydantic для работы
 ```python
 from pydantic import BaseModel, ConfigDict
