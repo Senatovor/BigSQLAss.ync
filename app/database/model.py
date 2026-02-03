@@ -1,16 +1,34 @@
-from sqlalchemy import Integer, func
+from sqlalchemy import func, TIMESTAMP, UUID
 from sqlalchemy.orm import DeclarativeBase, declared_attr, Mapped, mapped_column, class_mapper
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from datetime import datetime
+import uuid
 
 
 class Base(AsyncAttrs, DeclarativeBase):
-    """Базовый класс таблицы, который наследуется в другие"""
+    """Абстрактный базовый класс для всех моделей SQLAlchemy
+
+    Attributes:
+        id: ID таблицы
+        created_at: Время создания
+        updated_at: Время обновления
+    """
     __abstract__ = True
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(server_default=func.now(), onupdate=func.now())
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        default=uuid.uuid4
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        TIMESTAMP,
+        server_default=func.now(),
+        onupdate=func.now()
+    )
 
     @declared_attr.directive
     def __tablename__(cls) -> str:
@@ -23,5 +41,5 @@ class Base(AsyncAttrs, DeclarativeBase):
         return {column.key: getattr(self, column.key) for column in columns}
 
     def __repr__(self) -> str:
-        """Строковое представление объекта """
+        """Строковое представление объекта"""
         return f"<{self.__class__.__name__}(id={self.id})>"

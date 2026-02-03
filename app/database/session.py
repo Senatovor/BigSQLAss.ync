@@ -1,51 +1,154 @@
+import asyncio
 from sqlalchemy import text
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine, AsyncSession
-from app.config import settings
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine, AsyncSession, AsyncEngine
 from functools import wraps
+from typing import AsyncIterator
+from loguru import logger
+from datetime import datetime
+from contextlib import asynccontextmanager
 
-SQL_DATABASE_URL = settings.get_db_url()
+from app.config import settings
 
-engine = create_async_engine(url=SQL_DATABASE_URL)
-session_factory = async_sessionmaker(engine, expire_on_commit=False)
-
+SQL_DATABASE_URL = settings.database_url_posgresql
 
 class DatabaseSessionManager:
-    """Класс для работы с сессиями"""
+    def __init__(
+            self,
+            database_url: str,
+            session_factory: async_sessionmaker[AsyncSession] | None = None,
+            engine: AsyncEngine | None = None
+    ) -> None:
+        """Инициализация менеджера сессий.
 
-    def __init__(self, session_maker: async_sessionmaker[AsyncSession]):
-        self.session_factory = session_maker
+        Args:
+            database_url: URL для подключения к БД
+            session_factory: Опциональная фабрика сессий
+            engine: Опциональный существующий движок
+        """
+        self.database_url = database_url
+        self.engine = engine
+        self.session_factory = session_factory
 
+    async def init(self):
+        """Инициализирует движок базы данных и фабрику сессий."""
+        self.engine = create_async_engine(
+            url=self.database_url,
+        )
+        self.session_factory = async_sessionmaker(
+            bind=self.engine,
+            expire_on_commit=False,
+            autoflush=False
+        )
+    
+    async def close(self):
+        """Закрывает соединения с базой данных."""
+        if self.engine:
+            await self.engine.dispose()
+
+    @asynccontextmanager
+    async def session(
+            self,
+            isolation_level: str | None = None,
+            commit: bool = False
+    ) -> AsyncIterator[AsyncSession]:
+        """Контекстный менеджер для сессий базы данных.
+
+         Алгоритм работы:
+        1. Фиксирует время начала операции
+        2. Создает новую сессию через session_factory
+        3. Если указан isolation_level - устанавливает его для транзакции
+        4. Возвращает сессию через yield (точка входа в контекст)
+        5. При выходе из контекста:
+           - Если commit=True -> выполняет commit
+           - В случае ошибки -> выполняет rollback
+           - В любом случае закрывает сессию
+        6. Логирует время выполнения операции
+
+        Args:
+            isolation_level: Уровень изоляции транзакции (None, 'READ COMMITTED' и т.д.)
+            commit: Флаг автоматического коммита изменений
+
+        Yields:
+            AsyncSession: Асинхронная сессия базы данных
+
+        Raises:
+            Exception: Любые ошибки при работе с БД
+        """
+        start_time = datetime.now()
+        logger.info(f"Создание новой сессии. Изоляция: {isolation_level}, Автокоммит: {commit}")
+        async with self.session_factory() as session: # type: ignore
+            try:
+                if isolation_level:
+                    logger.debug(f"Установка уровня изоляции: {isolation_level}")
+                    await session.execute(
+                        text(f"SET TRANSACTION ISOLATION LEVEL {isolation_level}")
+                    )
+
+                yield session
+
+                if commit:
+                    logger.debug("Выполнение коммита изменений")
+                    await session.commit()
+                    logger.info("Изменения успешно закоммичены")
+            except Exception as e:
+                logger.error(f"Ошибка в сессии: {str(e)}", exc_info=True)
+                await session.rollback()
+                logger.info("Выполнен откат транзакции")
+                raise
+            finally:
+                await session.close()
+                exec_time = (datetime.now() - start_time).total_seconds()
+                logger.info(f"Сессия закрыта. Время выполнения: {exec_time:.2f} сек")
+    
     def connection(self, isolation_level: str | None = None, commit: bool = False):
         """
-        Декоратор. Создает сессию, самостоятельно её закрывает, делает rollback при ошибке.
-        Имеет настройку авто-commit и уровня изоляции.
+        Декоратор для управления транзакциями в функциях.
+
+        1. Создает новую сессию с указанным уровнем изоляции
+        2. Передает сессию в декорируемую функцию
+        3. Обрабатывает коммит/откат транзакции
+        4. Гарантирует закрытие сессии
+
+        Args:
+            isolation_level: Уровень изоляции транзакции
+            commit: Автоматически коммитить изменения
+
+        Returns:
+            Декоратор для функций, работающих с БД
         """
+
         def decorator(method):
             @wraps(method)
             async def wrapper(*args, **kwargs):
-                async with self.session_factory() as session:
+                start_time = datetime.now()
+                logger.info(f"Начало транзакции для {method.__name__}. Изоляция: {isolation_level}")
+                async with self.session_factory() as session: # type: ignore
                     try:
                         if isolation_level:
+                            logger.debug(f"Установка уровня изоляции: {isolation_level}")
                             await session.execute(text(f"SET TRANSACTION ISOLATION LEVEL {isolation_level}"))
+                        logger.debug(f"Выполнение метода {method.__name__}")
                         result = await method(*args, session=session, **kwargs)
                         if commit:
+                            logger.debug("Выполнение коммита изменений")
                             await session.commit()
+                            logger.info("Изменения успешно закоммичены")
                         return result
-                    except Exception:
+                    except Exception as e:
+                        logger.error(f"Ошибка в транзакции {method.__name__}: {str(e)}", exc_info=True)
                         await session.rollback()
+                        logger.info("Выполнен откат транзакции")
                         raise
                     finally:
                         await session.close()
+                        exec_time = (datetime.now() - start_time).total_seconds()
+                        logger.info(f"Транзакция завершена. Время выполнения: {exec_time:.2f} сек")
 
             return wrapper
 
         return decorator
-
-
-session_manager = DatabaseSessionManager(session_factory)
-
-# Пример использования декоратора
-#
-# @session_manager.connection(commit=True)
-# async def test(session: AsyncSession):
-#     pass
+    
+    
+# Глобальный экземпляр менеджера сессий
+session_manager = DatabaseSessionManager(SQL_DATABASE_URL)
+asyncio.run(session_manager.init())
