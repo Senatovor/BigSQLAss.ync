@@ -19,6 +19,7 @@
 ├── 📂 app/                  # Основное приложение
 │   ├── 📂 database/         # Основной модуль для работы с БД
 │   │   ├── model.py         # Базовая модель SQLAlchemy
+│   │   ├── executor.py      # Менеджер для выполнения insert, update, select, delete SQLAlchemy
 │   │   ├── service.py       # Базовый сервис с универсальными методами
 │   │   └── session.py       # Управление сессиями
 │   ├── enums.py             # Файл для хранения ваших Enum моделей
@@ -46,7 +47,7 @@
 pip install -r .requirements.txt
 ```
 ### 2. Настройка окружения
-Заполните файл .env по типу:
+Скопируйте .env.example в .env и заполните:
 ```text
 DB_HOST=""
 DB_PORT=""
@@ -129,7 +130,7 @@ from app.models.setup_model import SetupModel      # ДОБАВЛЯЕМ МОДЕ
 config = context.config
 config.set_main_option("sqlalchemy.url", SQL_DATABASE_URL)
 ```
-P.S. Но если делаете модели в modfels.py, то добавлять модели в env.py не обязательно
+P.S. Но если делаете модели в models.py, то добавлять модели в env.py не обязательно
 ### 3. Заготавливаем модель Pydantic для работы
 ```python
 from pydantic import BaseModel, ConfigDict
@@ -144,22 +145,13 @@ class SetupScheme(BaseModel):
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 ```
-### 4. Создаем сервис для нашей модели
-```python
-from app.models.setup_model import SetupModel
-from app.database.service import BaseService
-
-
-class SetupService(BaseService[SetupModel]):
-    """Пример одного из ваших сервисов"""
-    model = SetupModel
-```
-### 5. Пример работы
+### 4. Пример работы c DBManager
 ```python
 from app.database.session import session_manager
-from app.services.setup_service import SetupService
-from app.enums.setup_enum import SetupEnum
-from app.schemes.setup_scheme import SetupScheme
+from app.database.service import DBManager
+from app.enums import SetupEnum
+from app.schemes import SetupScheme
+from app.models import SetupModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import create_model
 import asyncio
@@ -175,11 +167,34 @@ async def test(title: str, number: SetupEnum, session: AsyncSession):
         number=(SetupEnum, ...)
     )
 
-    new_object = await SetupService.add(session, NewObject(title=title, number=number))
+    new_object = await DBManager(SetupModel).add(session, NewObject(title=title, number=number))
 
-    print('Обьект:\n'
-          f'{SetupScheme.model_validate(new_object).model_dump()}\n'
-          'Был создан!')
+    print(SetupScheme.model_validate(new_object).model_dump())
+
+asyncio.run(test('Привет Мир!', 'один'))
+```
+### 4. Пример работы c sql_manager
+```python
+from app.database.session import session_manager
+from app.database.executer import sql_manager
+from app.enums import SetupEnum
+from app.schemes import SetupScheme
+from app.models import SetupModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import insert
+from pydantic import create_model
+import asyncio
+
+
+@session_manager.connection(commit=True)
+async def test(title: str, number: SetupEnum, session: AsyncSession):
+    """Пример работы"""
+
+    new_object = await sql_manager(
+        insert(SetupModel).values(title=title, number=number).returning(SetupModel)
+    ).scalar_one_or_none(session)
+
+    print(SetupScheme.model_validate(new_object).model_dump())
 
 asyncio.run(test('Привет Мир!', 'один'))
 ```
